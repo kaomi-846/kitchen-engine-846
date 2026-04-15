@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kitchen Engine 846 - MASTER FINAL</title>
+<title>Kitchen Engine 846 - DATE FIRST FINAL</title>
 
 <style>
 body{font-family:sans-serif;background:#f6f2ec;margin:0;padding:12px}
@@ -18,19 +18,12 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 
 <body>
 
-<h1>🏭 Kitchen Engine 846（MASTER FINAL）</h1>
+<h1>🏭 Kitchen Engine 846（DATE FIRST FINAL）</h1>
 
-<!-- ================= 製造情報 ================= -->
+<!-- ================= 製造日（最上部） ================= -->
 <div class="card">
-<h3>📅 製造情報</h3>
-
+<h3>📅 製造日</h3>
 <input id="prod_date" type="date">
-<input id="lot_code" placeholder="ロット番号（例：A001）">
-<input id="qty" type="number" placeholder="出来高（本数）">
-<input id="ph" placeholder="pH">
-<input id="temp" placeholder="気温（例：18℃）">
-<input id="weather" placeholder="天候">
-
 </div>
 
 <!-- ================= 原材料 ================= -->
@@ -61,7 +54,7 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 
 <select id="recipe_item"></select>
 
-<input id="recipe_amount" placeholder="使用量（例：500g）">
+<input id="recipe_amount" placeholder="使用量">
 
 <button onclick="addItem()">材料追加</button>
 <button onclick="saveRecipe()">保存</button>
@@ -76,11 +69,23 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 <div id="steps"></div>
 </div>
 
-<!-- ================= 原価 ================= -->
+<!-- ================= 原価（製造情報の下） ================= -->
 <div class="card">
 <h3>💰 原価</h3>
 <button onclick="calcCost()">計算</button>
 <div id="cost"></div>
+</div>
+
+<!-- ================= 製造情報（原価の下） ================= -->
+<div class="card">
+<h3>🏭 製造情報</h3>
+
+<input id="lot_code" placeholder="ロット番号（例 A001）">
+<input id="qty" type="number" placeholder="出来高">
+<input id="ph" placeholder="pH">
+<input id="temp" placeholder="気温">
+<input id="weather" placeholder="天候">
+
 </div>
 
 <!-- ================= バックアップ ================= -->
@@ -100,10 +105,12 @@ let processState = {};
 
 // ================= 初期日付 =================
 window.onload=function(){
+
 let d=new Date();
 let y=d.getFullYear();
 let m=String(d.getMonth()+1).padStart(2,"0");
 let day=String(d.getDate()).padStart(2,"0");
+
 prod_date.value=`${y}-${m}-${day}`;
 }
 
@@ -114,26 +121,14 @@ localStorage.setItem("rec",JSON.stringify(recipes));
 localStorage.setItem("logs",JSON.stringify(logs));
 }
 
-// ================= 単位 =================
-function normalizeUnit(u){
-return (u||"").toLowerCase()
-.replace(/㎏|ｋｇ/g,"kg")
-.replace(/ｇ/g,"g")
-.replace(/ｍｌ/g,"ml")
-.replace(/ℓ|Ｌ/g,"l")
-.trim();
+// ================= 製造日取得 =================
+function getDateKey(){
+return prod_date.value.replaceAll("-","");
 }
 
-// ================= 数値 =================
-function normalizeAmount(v){
-if(!v) return null;
-let n=parseFloat(v);
-if(isNaN(n)) return null;
-if(v.includes("kg")) return n*1000;
-if(v.includes("g")) return n;
-if(v.includes("l")) return n*1000;
-if(v.includes("ml")) return n;
-return n;
+// ================= ロット生成 =================
+function makeLot(){
+return getDateKey() + "-" + lot_code.value;
 }
 
 // ================= 原材料 =================
@@ -143,7 +138,7 @@ ingredients.push({
 name:ing_name.value,
 brand:ing_brand.value,
 qty:Number(ing_qty.value),
-unit:normalizeUnit(ing_unit.value),
+unit:ing_unit.value,
 price:Number(ing_price.value)
 });
 
@@ -176,24 +171,20 @@ return r;
 function addItem(){
 
 let r=getRecipe();
-if(!r){alert("レシピ名必須");return;}
+if(!r){alert("レシピ名");return;}
 
 let name=recipe_item.value;
 let amt=recipe_amount.value;
 
 if(!name||!amt){alert("未入力");return;}
 
-let amount=normalizeAmount(amt);
-if(!amount){alert("数値エラー");return;}
-
-r.items.push({name,amount});
+r.items.push({name,amount:amt});
 
 renderRecipe(r);
 renderSelect();
 
 recipe_item.value="";
 recipe_amount.value="";
-recipe_item.focus();
 }
 
 // ================= 工程 =================
@@ -203,78 +194,43 @@ function loadProcess(){
 stepsDiv.innerHTML="";
 
 steps.forEach(s=>{
-
-if(!processState[s]){
-processState[s]={start:null,end:null,last:null,total:0,running:false};
-}
-
-let p=processState[s];
-
 stepsDiv.innerHTML+=`
 <div class="step">
 <b>${s}</b><br>
-
 <button onclick="start('${s}')">開始</button>
-<button onclick="pause('${s}')">中断</button>
-<button onclick="resume('${s}')">再開</button>
 <button onclick="end('${s}')">終了</button>
-
-<br>
-<small>${Math.floor((p.total||0)/1000)}秒</small>
 </div>`;
 });
 }
 
 function start(s){
-processState[s].start=Date.now();
-processState[s].last=Date.now();
-processState[s].running=true;
-loadProcess();
-}
-
-function pause(s){
-let p=processState[s];
-p.total+=Date.now()-p.last;
-p.running=false;
-loadProcess();
-}
-
-function resume(s){
-let p=processState[s];
-p.last=Date.now();
-p.running=true;
+processState[s]=Date.now();
 loadProcess();
 }
 
 function end(s){
-let p=processState[s];
-if(p.running){
-p.total+=Date.now()-p.last;
-p.running=false;
-}
-p.end=Date.now();
+processState[s]=Date.now()-processState[s];
 loadProcess();
 }
 
-// ================= ロット =================
+// ================= ロット保存 =================
 function finishBatch(){
 
-let date=prod_date.value.replaceAll("-","");
-let lot= date+"-"+lot_code.value;
+let lot = makeLot();
 
 logs.push({
 lot,
-date,
+date:getDateKey(),
 qty:Number(qty.value),
 ph:ph.value,
 temp:temp.value,
 weather:weather.value,
-process:JSON.parse(JSON.stringify(processState))
+process:processState
 });
 
 save();
 
-alert("製造記録完了：" + lot);
+alert("保存完了：" + lot);
 }
 
 // ================= 原価 =================
@@ -288,13 +244,11 @@ let ing=ingredients.find(x=>x.name===i.name);
 if(!ing)return;
 
 let base=ing.qty*(ing.unit==="kg"||ing.unit==="l"?1000:1);
-total+=(ing.price/base)*i.amount;
+total+=(ing.price/base)*parseFloat(i.amount);
 });
 });
 
-cost.innerHTML=`
-総原価：${total.toFixed(1)}円
-`;
+cost.innerHTML=`総原価：${total.toFixed(1)}円`;
 }
 
 // ================= 表示 =================
@@ -303,7 +257,7 @@ ing_list.innerHTML="";
 ingredients.forEach(i=>{
 ing_list.innerHTML+=`
 <div class="small">
-🧂 ${i.name}${i.brand?`（${i.brand}）`:``}<br>
+🧂 ${i.name} ${i.brand?`（${i.brand}）`:``}<br>
 ${i.qty}${i.unit} / ${i.price}円
 </div><hr>`;
 });
@@ -320,7 +274,7 @@ recipe_item.appendChild(op);
 });
 }
 
-// ================= レシピ表示 =================
+// ================= レシピ =================
 function renderRecipe(r){
 recipe_list.innerHTML="";
 if(!r)return;
@@ -333,12 +287,13 @@ recipe_list.innerHTML+=`<div class="small">${i.name} ${i.amount}</div>`;
 // ================= バックアップ =================
 function exportData(){
 const data={ingredients,recipes,logs};
+
 const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
 const url=URL.createObjectURL(blob);
 
 let a=document.createElement("a");
 a.href=url;
-a.download="kitchen_backup.json";
+a.download="backup.json";
 a.click();
 }
 
@@ -373,3 +328,5 @@ renderSelect();
 
 </body>
 </html>
+
+
