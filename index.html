@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kitchen Engine 846 - DATE RESTORE FINAL</title>
+<title>Kitchen Engine 846 - MASTER STRUCTURE FINAL</title>
 
 <style>
 body{font-family:sans-serif;background:#f6f2ec;margin:0;padding:12px}
@@ -12,15 +12,14 @@ h1{font-size:18px}
 input,select{width:100%;padding:8px;margin:4px 0;border-radius:6px;border:1px solid #ccc}
 button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f3b;color:white;font-size:12px}
 .small{font-size:12px;color:#666}
-.step{border-bottom:1px solid #eee;padding:6px 0}
 </style>
 </head>
 
 <body>
 
-<h1>🏭 Kitchen Engine 846（DATE RESTORE FINAL）</h1>
+<h1>🏭 Kitchen Engine 846（MASTER STRUCTURE FINAL）</h1>
 
-<!-- ================= ★製造日（最上部復活） ================= -->
+<!-- ================= 製造日 ================= -->
 <div class="card">
 <h3>📅 製造日</h3>
 <input id="prod_date" type="date">
@@ -28,12 +27,25 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 
 <!-- ================= 原材料 ================= -->
 <div class="card">
-<h3>🧂 原材料</h3>
+<h3>🧂 原材料マスタ</h3>
 
-<input id="ing_name" placeholder="原材料名">
+<input id="ing_name" placeholder="原材料名（食塩など）">
+<input id="ing_brand" placeholder="ブランド（シママースなど）">
+
+<select id="ing_category">
+<option value="">カテゴリ</option>
+<option>原材料</option>
+<option>調味料</option>
+<option>漬け原材料</option>
+<option>ピクルス液</option>
+<option>スパイス</option>
+<option>添加物</option>
+<option>その他</option>
+</select>
+
 <input id="ing_qty" type="number" placeholder="規格数量">
-<input id="ing_unit" placeholder="単位">
-<input id="ing_price" type="number" placeholder="価格">
+<input id="ing_unit" placeholder="単位（kg/g/L/ml/個）">
+<input id="ing_price" type="number" placeholder="価格（円）">
 
 <button onclick="addIngredient()">追加</button>
 
@@ -48,9 +60,9 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 
 <select id="recipe_item"></select>
 
-<input id="recipe_amount" placeholder="使用量">
+<input id="recipe_amount" placeholder="使用量（例 500g）">
 
-<button onclick="addItem()">追加</button>
+<button onclick="addItem()">材料追加</button>
 
 <div id="recipe_list"></div>
 </div>
@@ -73,7 +85,7 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 <div class="card">
 <h3>🏭 製造情報</h3>
 
-<input id="lot_code" placeholder="ロット番号（例 A001）">
+<input id="lot_code" placeholder="ロット（A001など）">
 <input id="qty" type="number" placeholder="出来高">
 
 </div>
@@ -83,18 +95,13 @@ button{padding:6px 8px;margin:2px;border:none;border-radius:6px;background:#6b4f
 // ================= データ =================
 let ingredients = JSON.parse(localStorage.getItem("ing")||"[]");
 let recipes = JSON.parse(localStorage.getItem("rec")||"[]");
-let processState = {};
 let currentItems = [];
+let processState = {};
 
-// ================= 初期日付（最重要復活） =================
+// ================= 初期日付 =================
 window.onload=function(){
-
 let d=new Date();
-let y=d.getFullYear();
-let m=String(d.getMonth()+1).padStart(2,"0");
-let day=String(d.getDate()).padStart(2,"0");
-
-prod_date.value=`${y}-${m}-${day}`;
+prod_date.value=d.toISOString().split("T")[0];
 }
 
 // ================= 保存 =================
@@ -103,23 +110,37 @@ localStorage.setItem("ing",JSON.stringify(ingredients));
 localStorage.setItem("rec",JSON.stringify(recipes));
 }
 
-// ================= ★日付キー =================
-function getDateKey(){
-return prod_date.value.replaceAll("-","");
+// ================= 単位ゆらぎ補正 =================
+function normalizeUnit(u){
+return (u||"")
+.toLowerCase()
+.replace(/㎏|ｋｇ/g,"kg")
+.replace(/g/g,"g")
+.replace(/ｍｌ/g,"ml")
+.replace(/ℓ|Ｌ/g,"l")
+.trim();
 }
 
-// ================= ★ロット生成（復活） =================
-function makeLot(){
-return getDateKey() + "-" + lot_code.value;
+// ================= 数値変換 =================
+function normalizeAmount(v){
+if(!v) return 0;
+let n=parseFloat(v);
+if(v.includes("kg")) return n*1000;
+if(v.includes("g")) return n;
+if(v.includes("l")) return n*1000;
+if(v.includes("ml")) return n;
+return n;
 }
 
-// ================= 原材料 =================
+// ================= 原材料追加 =================
 function addIngredient(){
 
 ingredients.push({
 name:ing_name.value,
+brand:ing_brand.value,
+category:ing_category.value,
 qty:Number(ing_qty.value),
-unit:ing_unit.value,
+unit:normalizeUnit(ing_unit.value),
 price:Number(ing_price.value)
 });
 
@@ -127,7 +148,10 @@ save();
 renderIng();
 renderSelect();
 
+// クリア
 ing_name.value="";
+ing_brand.value="";
+ing_category.value="";
 ing_qty.value="";
 ing_unit.value="";
 ing_price.value="";
@@ -138,7 +162,7 @@ function addItem(){
 
 currentItems.push({
 name:recipe_item.value,
-amount:parseFloat(recipe_amount.value)
+amount:normalizeAmount(recipe_amount.value)
 });
 
 renderRecipe();
@@ -148,9 +172,7 @@ renderRecipe();
 let steps=["洗浄","刻み","茹でこぼし","瓶詰","加熱","冷却"];
 
 function loadProcess(){
-
 stepsDiv.innerHTML="";
-
 steps.forEach(s=>{
 stepsDiv.innerHTML+=`
 <div class="step">
@@ -171,41 +193,46 @@ processState[s]=Date.now()-processState[s];
 loadProcess();
 }
 
-// ================= 原価（出来高連動） =================
+// ================= ロット生成 =================
+function makeLot(){
+let d=prod_date.value.replaceAll("-","");
+return d + "-" + lot_code.value;
+}
+
+// ================= 原価 =================
 function calcCost(){
 
 let total=0;
 
 currentItems.forEach(i=>{
 
-let ing=ingredients.find(x=>x.name===i.name);
-if(!ing)return;
+let ing=ingredients.find(x=>
+x.name===i.name
+);
 
-let base=ing.qty*(ing.unit==="kg"||ing.unit==="l"?1000:1);
+if(!ing) return;
 
-total+=(ing.price/base)*i.amount;
+let base = ing.qty * (ing.unit==="kg"||ing.unit==="l"?1000:1);
+
+total += (ing.price/base)*i.amount;
 
 });
 
-// ★出来高必須
-let out=Number(qty.value);
+// 出来高必須
+let out=Number(qty.value||0);
 if(!out){
 alert("出来高必須");
 return;
 }
 
-// ★ロット（日付復活）
-let lot=makeLot();
-
-// ★単価
-let per=total/out;
+let per = total/out;
 
 cost.innerHTML=`
-📅 製造日：${getDateKey()}<br>
-🏷 ロット：${lot}<br>
+📅 ${prod_date.value}<br>
+🏷 ${makeLot()}<br>
 💰 総原価：${total.toFixed(1)}円<br>
 📦 出来高：${out}<br>
-🍶 1個原価：${per.toFixed(1)}円
+🍶 1個：${per.toFixed(1)}円
 `;
 }
 
@@ -215,7 +242,8 @@ ing_list.innerHTML="";
 ingredients.forEach(i=>{
 ing_list.innerHTML+=`
 <div class="small">
-🧂 ${i.name} ${i.qty}${i.unit} / ${i.price}円
+🧂 ${i.name}（${i.brand||"-"}）<br>
+${i.category} / ${i.qty}${i.unit} / ${i.price}円
 </div><hr>`;
 });
 }
@@ -226,12 +254,12 @@ recipe_item.innerHTML="";
 ingredients.forEach(i=>{
 let op=document.createElement("option");
 op.value=i.name;
-op.textContent=i.name;
+op.textContent=`${i.name}（${i.brand||""}）`;
 recipe_item.appendChild(op);
 });
 }
 
-// ================= レシピ =================
+// ================= レシピ表示 =================
 function renderRecipe(){
 recipe_list.innerHTML="";
 currentItems.forEach(i=>{
