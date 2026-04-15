@@ -1,0 +1,297 @@
+<<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>完全BOM原価管理（単位統一版）</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        background: #f6f1ea;
+      }
+      header {
+        background: #38281f;
+        color: #fff;
+        padding: 12px;
+        font-size: 18px;
+      }
+      .container {
+        padding: 12px;
+        max-width: 1200px;
+        margin: auto;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      @media (min-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      .title {
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 10px;
+        margin: 6px 0;
+        font-size: 14px;
+      }
+      button {
+        background: #4d362b;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+      }
+      .item {
+        border-bottom: 1px solid #eee;
+        padding: 6px 0;
+        font-size: 13px;
+      }
+      .tag {
+        font-size: 11px;
+        background: #eee;
+        padding: 2px 6px;
+        border-radius: 6px;
+        margin-left: 6px;
+      }
+      .small {
+        font-size: 12px;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <header>完全BOM原価管理（g/ml統一・単位自動変換版）</header>
+    <div class="container">
+      <div class="grid">
+        <!-- 原材料マスタ -->
+        <div class="card">
+          <div class="title">① 原材料マスタ</div>
+          <input id="mName" placeholder="材料名（例：砂糖・酢・水）" />
+          <input id="mPrice" placeholder="購入価格（税込）" />
+          <input id="mQty" placeholder="規格量（例：1）" />
+          <select id="mUnit">
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="l">L</option>
+            <option value="ml">ml</option>
+            <option value="個">個</option>
+          </select>
+          <input id="mSupplier" placeholder="購入先" />
+          <button onclick="addMaterial()">追加</button>
+          <div id="materialList"></div>
+        </div>
+
+        <!-- レシピ -->
+        <div class="card">
+          <div class="title">② レシピ</div>
+          <input id="rName" placeholder="レシピ名" />
+          <button onclick="createRecipe()">新規</button>
+          <select id="bomItem"></select>
+          <input id="bomQty" placeholder="使用量（g / ml）" />
+          <button onclick="addBom()">追加</button>
+          <button onclick="saveRecipe()">保存</button>
+          <div id="recipeView"></div>
+        </div>
+
+        <!-- 製品 -->
+        <div class="card">
+          <div class="title">③ 製品</div>
+          <input id="pName" placeholder="製品名" />
+          <select id="pRecipe"></select>
+          <input id="pPrice" placeholder="売価" />
+          <button onclick="addProduct()">登録</button>
+          <div id="productList"></div>
+        </div>
+
+        <!-- ロット -->
+        <div class="card">
+          <div class="title">④ ロット</div>
+          <select id="lotProduct"></select>
+          <input id="lotSuffix" placeholder="ロット追番" />
+          <button onclick="createLot()">作成</button>
+          <div id="lotView"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let materials = JSON.parse(localStorage.getItem("materials") || "[]");
+      let recipes = JSON.parse(localStorage.getItem("recipes") || "[]");
+      let products = JSON.parse(localStorage.getItem("products") || "[]");
+      let lots = JSON.parse(localStorage.getItem("lots") || "[]");
+
+      let currentRecipe = { name: "", items: [] };
+
+      function saveAll() {
+        localStorage.setItem("materials", JSON.stringify(materials));
+        localStorage.setItem("recipes", JSON.stringify(recipes));
+        localStorage.setItem("products", JSON.stringify(products));
+        localStorage.setItem("lots", JSON.stringify(lots));
+        render();
+      }
+
+      // ---------------- UNIT CONVERT ----------------
+      function toGramOrMl(qty, unit) {
+        if (unit == "kg") return qty * 1000;
+        if (unit == "g") return qty;
+        if (unit == "l") return qty * 1000;
+        if (unit == "ml") return qty;
+        return qty; // 本などはそのまま
+      }
+
+      function unitCost(m) {
+        let baseQty = toGramOrMl(m.qty, m.unit);
+        return m.price / (baseQty || 1);
+      }
+
+      // ---------------- MATERIAL ----------------
+      function addMaterial() {
+        materials.push({
+          name: mName.value,
+          price: parseFloat(mPrice.value || 0),
+          qty: parseFloat(mQty.value || 0),
+          unit: mUnit.value,
+          supplier: mSupplier.value,
+        });
+
+        mName.value = "";
+        mPrice.value = "";
+        mQty.value = "";
+        mSupplier.value = "";
+        saveAll();
+      }
+
+      // ---------------- RECIPE ----------------
+      function createRecipe() {
+        currentRecipe = { name: rName.value, items: [] };
+        rName.value = "";
+        render();
+      }
+
+      function addBom() {
+        currentRecipe.items.push({
+          name: bomItem.value,
+          qty: parseFloat(bomQty.value || 0),
+        });
+        bomQty.value = "";
+        render();
+      }
+
+      function saveRecipe() {
+        recipes.push(currentRecipe);
+        currentRecipe = { name: "", items: [] };
+        saveAll();
+      }
+
+      function expand(items) {
+        let out = [];
+        for (let i of items) {
+          let m = materials.find((x) => x.name === i.name);
+          if (m) {
+            out.push({
+              name: m.name,
+              qty: i.qty,
+              price: unitCost(m),
+            });
+          }
+        }
+        return out;
+      }
+
+      // ---------------- PRODUCT ----------------
+      function addProduct() {
+        products.push({
+          name: pName.value,
+          recipe: pRecipe.value,
+          price: parseFloat(pPrice.value || 0),
+        });
+        pName.value = "";
+        saveAll();
+      }
+
+      // ---------------- LOT ----------------
+      function createLot() {
+        let p = products.find((x) => x.name === lotProduct.value);
+        if (!p) return;
+        let r = recipes.find((x) => x.name === p.recipe);
+        if (!r) return;
+
+        let bom = expand(r.items);
+        let cost = bom.reduce((a, b) => a + b.qty * b.price, 0);
+
+        let id =
+          new Date().toISOString().slice(0, 10).replace(/-/g, "") +
+          "-" +
+          lotSuffix.value;
+
+        lots.unshift({
+          product: p.name,
+          lot: id,
+          cost,
+          price: p.price,
+          profit: p.price - cost,
+        });
+
+        saveAll();
+      }
+
+      // ---------------- RENDER ----------------
+      function render() {
+        materialList.innerHTML = materials
+          .map(
+            (m) => `
+<div class='item'>
+${m.name} ${m.price}円 / ${m.qty}${m.unit}
+<div class='small'>単価(統一)：${unitCost(m).toFixed(4)} 円/g(or ml)</div>
+<div class='small'>購入先：${m.supplier || "未設定"}</div>
+</div>`
+          )
+          .join("");
+
+        bomItem.innerHTML = materials
+          .map((m) => `<option>${m.name}</option>`)
+          .join("");
+
+        recipeView.innerHTML = currentRecipe.name || "編集中なし";
+
+        pRecipe.innerHTML = recipes
+          .map((r) => `<option>${r.name}</option>`)
+          .join("");
+
+        lotProduct.innerHTML = products
+          .map((p) => `<option>${p.name}</option>`)
+          .join("");
+
+        productList.innerHTML = products
+          .map(
+            (p) => `
+<div class='item'>${p.name} / ${p.price}円</div>`
+          )
+          .join("");
+
+        lotView.innerHTML = lots
+          .map(
+            (l) => `
+<div class='item'>${l.product} ${l.lot} 利益:${l.profit.toFixed(0)}円</div>`
+          )
+          .join("");
+      }
+
+      render();
+    </script>
+  </body>
+</html>
